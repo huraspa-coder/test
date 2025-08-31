@@ -3,12 +3,11 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const venom = require("venom-bot");
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(express.json());
-
-// Carpeta local para la sesión y QR
+// Carpeta persistente local en Windows
 const SESSION_DIR = "C:\\venom-session";
 const QR_PATH = path.join(SESSION_DIR, "qr.png");
 
@@ -16,9 +15,10 @@ const QR_PATH = path.join(SESSION_DIR, "qr.png");
 fs.mkdirSync(SESSION_DIR, { recursive: true });
 console.log("📂 Carpeta de tokens asegurada en:", SESSION_DIR);
 
-let venomClient;
+// Middleware para leer JSON
+app.use(express.json());
 
-// Endpoint para ver QR
+// Endpoint para ver el QR en el explorador
 app.get("/qr", (req, res) => {
   if (fs.existsSync(QR_PATH)) {
     res.sendFile(QR_PATH);
@@ -29,34 +29,35 @@ app.get("/qr", (req, res) => {
 
 // Endpoint para enviar mensajes
 app.post("/send-message", async (req, res) => {
+  if (!venomClient) return res.status(503).json({ error: "Cliente no listo" });
   const { to, message } = req.body;
-  if (!venomClient) {
-    return res.status(503).json({ error: "Cliente WhatsApp no iniciado" });
-  }
+
   try {
-    const result = await venomClient.sendText(to, message);
+    // WhatsApp requiere formato completo: número@s.whatsapp.net
+    const formattedTo = to.includes("@") ? to : `${to}@c.us`;
+    const result = await venomClient.sendText(formattedTo, message);
     res.json({ success: true, result });
   } catch (err) {
-    console.error("Error enviando mensaje:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Endpoint de status
+// Endpoint para status de sesión
 app.get("/status", (req, res) => {
   if (venomClient && venomClient.isConnected()) {
     res.json({ status: "logged", message: "Cliente WhatsApp conectado ✅" });
   } else {
-    res.json({ status: "not_logged", message: "Esperando QR o no iniciado ❌" });
+    res.json({ status: "not_logged", message: "Cliente esperando QR o no iniciado ❌" });
   }
 });
+
+let venomClient;
 
 // Crear sesión Venom
 venom
   .create(
     "venom-session",
     (base64Qr) => {
-      // Guardar QR en PNG
       const matches = base64Qr.match(/^data:image\/png;base64,(.+)$/);
       if (matches) {
         const buffer = Buffer.from(matches[1], "base64");
@@ -66,16 +67,17 @@ venom
     },
     undefined,
     {
-      headless: false, // mostrar ventana para Windows
-      logQR: true,
+      headless: false, // Windows: Chrome visible para evitar errores
+      logQR: false,
       browserPathExecutable: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       browserArgs: [
-        "--disable-gpu",
-        "--disable-extensions",
-        "--disable-background-networking",
-        "--disable-default-apps",
-        "--disable-popup-blocking",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
         "--no-first-run",
+        "--no-zygote",
+        "--disable-gpu",
       ],
       mkdirFolderToken: SESSION_DIR,
       folderNameToken: "venom-session",
@@ -85,10 +87,8 @@ venom
     venomClient = client;
     console.log("🤖 Venom iniciado correctamente");
 
-    // Listener de mensajes entrantes
+    // Responder automáticamente a mensajes entrantes
     client.onMessage((message) => {
-      console.log("Mensaje recibido de", message.from, ":", message.body);
-      // Respuesta automática ejemplo
       if (message.body.toLowerCase() === "hola") {
         client.sendText(message.from, "👋 Hola, bot funcionando!").catch(console.error);
       }
@@ -99,6 +99,7 @@ venom
 // Healthcheck
 app.get("/", (req, res) => res.send("Venom BOT corriendo en Windows 🚀"));
 
+// Iniciar servidor
 app.listen(PORT, () => {
   console.log(`🚀 Servidor escuchando en puerto ${PORT}`);
 });
