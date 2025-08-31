@@ -1,20 +1,20 @@
 const venom = require('venom-bot');
-const express = require('express');
-const bodyParser = require('body-parser');
+const path = require('path');
+const fs = require('fs');
 
-const app = express();
-app.use(bodyParser.json());
+const SESSION_NAME = "venom-session";
+const VENOM_TOKENS_PATH = path.join(__dirname, "tokens");
 
-// Nombre de la sesión (puedes cambiarlo si quieres otra)
-const SESSION_NAME = process.env.SESSION_NAME || 'venom-session';
-// Ruta local donde se guardarán los tokens y el SingletonLock
-const VENOM_TOKENS_PATH = process.env.VENOM_TOKENS_PATH || './tokens';
+// Verifica que la carpeta exista, si no, la crea
+if (!fs.existsSync(VENOM_TOKENS_PATH)) {
+  fs.mkdirSync(VENOM_TOKENS_PATH, { recursive: true });
+}
 
 venom
   .create({
     session: SESSION_NAME,
     multidevice: true,
-    headless: true,
+    headless: false, // para ver la ventana en tu PC
     folderNameToken: VENOM_TOKENS_PATH,
     browserArgs: [
       '--no-sandbox',
@@ -27,27 +27,18 @@ venom
       '--disable-gpu'
     ]
   })
-  .then((client) => start(client))
+  .then((client) => {
+    console.log("✅ Venom iniciado correctamente en tu PC local");
+    start(client);
+  })
   .catch((err) => {
-    console.error('Error al iniciar Venom:', err);
+    console.error("❌ Error al iniciar Venom:", err);
   });
 
 function start(client) {
-  console.log('✅ Venom iniciado correctamente en tu PC local');
-
-  // Endpoint de prueba para enviar mensaje
-  app.post('/send', async (req, res) => {
-    const { to, message } = req.body;
-    try {
-      await client.sendText(to, message);
-      res.json({ success: true, to, message });
-    } catch (error) {
-      res.status(500).json({ success: false, error: error.message });
+  client.onMessage((message) => {
+    if (message.body === 'Hola') {
+      client.sendText(message.from, '👋 Hola, soy tu bot Venom en PC local.');
     }
   });
 }
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server corriendo en http://localhost:${PORT}`);
-});
