@@ -4,7 +4,7 @@ const path = require("path");
 const express = require("express");
 const venom = require("venom-bot");
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 // Carpeta local para sesión (Windows)
 const SESSION_DIR = "C:\\venom-session"; // <-- Aquí se guarda la sesión
