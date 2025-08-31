@@ -6,15 +6,19 @@ const venom = require("venom-bot");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Carpeta local para sesión (Windows)
-const SESSION_DIR = "C:\\venom-session"; // <-- Aquí se guarda la sesión
+app.use(express.json());
+
+// Carpeta local para la sesión y QR
+const SESSION_DIR = "C:\\venom-session";
 const QR_PATH = path.join(SESSION_DIR, "qr.png");
 
 // Crear carpeta si no existe
 fs.mkdirSync(SESSION_DIR, { recursive: true });
 console.log("📂 Carpeta de tokens asegurada en:", SESSION_DIR);
 
-// Endpoint para ver el QR
+let venomClient;
+
+// Endpoint para ver QR
 app.get("/qr", (req, res) => {
   if (fs.existsSync(QR_PATH)) {
     res.sendFile(QR_PATH);
@@ -23,16 +27,29 @@ app.get("/qr", (req, res) => {
   }
 });
 
-// Endpoint para status de sesión
+// Endpoint para enviar mensajes
+app.post("/send-message", async (req, res) => {
+  const { to, message } = req.body;
+  if (!venomClient) {
+    return res.status(503).json({ error: "Cliente WhatsApp no iniciado" });
+  }
+  try {
+    const result = await venomClient.sendText(to, message);
+    res.json({ success: true, result });
+  } catch (err) {
+    console.error("Error enviando mensaje:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint de status
 app.get("/status", (req, res) => {
   if (venomClient && venomClient.isConnected()) {
     res.json({ status: "logged", message: "Cliente WhatsApp conectado ✅" });
   } else {
-    res.json({ status: "not_logged", message: "Cliente esperando QR o no iniciado ❌" });
+    res.json({ status: "not_logged", message: "Esperando QR o no iniciado ❌" });
   }
 });
-
-let venomClient;
 
 // Crear sesión Venom
 venom
@@ -49,12 +66,16 @@ venom
     },
     undefined,
     {
-      headless: false, // Para Windows, así ves el navegador y escaneas QR
-      logQR: false,
-      browserPathExecutable: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", // Ruta del Chrome instalado
+      headless: false, // mostrar ventana para Windows
+      logQR: true,
+      browserPathExecutable: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       browserArgs: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-default-apps",
+        "--disable-popup-blocking",
+        "--no-first-run",
       ],
       mkdirFolderToken: SESSION_DIR,
       folderNameToken: "venom-session",
@@ -66,7 +87,8 @@ venom
 
     // Listener de mensajes entrantes
     client.onMessage((message) => {
-      console.log("📩 Mensaje recibido:", message.body, "de", message.from);
+      console.log("Mensaje recibido de", message.from, ":", message.body);
+      // Respuesta automática ejemplo
       if (message.body.toLowerCase() === "hola") {
         client.sendText(message.from, "👋 Hola, bot funcionando!").catch(console.error);
       }
@@ -75,7 +97,7 @@ venom
   .catch((err) => console.error("❌ Error iniciando Venom:", err));
 
 // Healthcheck
-app.get("/", (req, res) => res.send("Venom BOT corriendo localmente 🚀"));
+app.get("/", (req, res) => res.send("Venom BOT corriendo en Windows 🚀"));
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor escuchando en puerto ${PORT}`);
